@@ -27,15 +27,15 @@ func prettyPrintJson(body []byte) {
 	log.Println("Block data", prettyJSON.String())
 }
 
-func doGetRequest(url string) (BlockData, error) {
+func doGetRequest(client *http.Client, url string) (BlockData, error) {
 	// Perform GET-requests
-	resp, err := http.Get(url)
+	resp, err := client.Get(url)
 
 	// Block
 	var block BlockData
 
 	if err != nil {
-		log.Println("Error performing att. slashing GET request:", err)
+		log.Println("Error performing GET request:", err)
 		return block, err
 	}
 
@@ -52,12 +52,12 @@ func doGetRequest(url string) (BlockData, error) {
 	return block, err
 }
 
-func getHead(config *config.Config) (string, error) {
+func getHead(client *http.Client, config *config.Config) (string, error) {
 	// Endpoint
 	url := config.Tokens.Infura + "/eth/v1/node/syncing"
 
 	// Perform GET-requests
-	resp, err := http.Get(url)
+	resp, err := client.Get(url)
 
 	// Chain head
 	var headData HeadData
@@ -77,7 +77,7 @@ func getHead(config *config.Config) (string, error) {
 	return headData.HeadData.HeadSlot, nil
 }
 
-func getSlot(config *config.Config, slot string) (BlockData, error) {
+func getSlot(client *http.Client, config *config.Config, slot string) (BlockData, error) {
 	// If slot is pre-Altair, use eth/v1 endpoint
 	altairSlot := 74240 * 32
 	currSlot, _ := strconv.Atoi(slot)
@@ -90,7 +90,7 @@ func getSlot(config *config.Config, slot string) (BlockData, error) {
 	}
 
 	// Get block at slot
-	return doGetRequest(config.Tokens.Infura + blockEndpoint + slot)
+	return doGetRequest(client, config.Tokens.Infura+blockEndpoint+slot)
 }
 
 func SlotStreamer(squeue *queue.SendQueue, conf *config.Config) {
@@ -100,8 +100,13 @@ func SlotStreamer(squeue *queue.SendQueue, conf *config.Config) {
 			headSlot := "2624391"
 	*/
 
+	// HTTP client
+	client := http.Client{
+		Timeout: 5 * time.Second,
+	}
+
 	// Get chain head
-	headSlot, err := getHead(conf)
+	headSlot, err := getHead(&client, conf)
 
 	if err != nil {
 		log.Fatalln("Error starting slotStreamer!")
@@ -119,7 +124,7 @@ func SlotStreamer(squeue *queue.SendQueue, conf *config.Config) {
 		if delta > 0 {
 			currSlot = conf.Stats.CurrentSlot - 1
 			log.Printf(
-				"[slotStreamer] %d slots behind: starting sync from slot=%d",
+				"[slotStreamer] %d slot(s) behind: starting sync from slot=%d",
 				delta, conf.Stats.CurrentSlot)
 		}
 	}
@@ -145,10 +150,22 @@ func SlotStreamer(squeue *queue.SendQueue, conf *config.Config) {
 		slot := strconv.FormatInt(int64(currSlot), 10)
 
 		// Get block
-		block, err := getSlot(conf, slot)
+		block, err := getSlot(&client, conf, slot)
 
 		if err != nil {
+			if conf.Debug {
+				fmt.Printf("↳ Error getting block: %s\n\n", err.Error())
+			}
+
 			log.Println("Error getting block ", slot, ", error:", err.Error())
+
+			// If we error out due to e.g. network conditions, sleep and retry
+			time.Sleep(time.Second * time.Duration(5))
+			continue
+		}
+
+		if conf.Debug {
+			fmt.Println("↳ Got block")
 		}
 
 		// Parse block for slashings
