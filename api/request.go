@@ -3,16 +3,24 @@ package api
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"strconv"
 	"time"
 
 	"slashcaster/config"
 	"slashcaster/queue"
+
+	"github.com/rs/zerolog/log"
 )
+
+func bumpStats(conf *config.Config, currSlot int, blockTime int64) {
+	conf.Mutex.Lock()
+	conf.Stats.BlocksParsed++
+	conf.Stats.CurrentSlot = currSlot
+	conf.Stats.BlockTime = blockTime
+	conf.Mutex.Unlock()
+}
 
 func prettyPrintJson(body []byte) {
 	// Pretty-print JSON
@@ -20,11 +28,11 @@ func prettyPrintJson(body []byte) {
 	error := json.Indent(&prettyJSON, body, "", "  ")
 
 	if error != nil {
-		log.Println("JSON parse error: ", error)
+		log.Error().Err(error).Msg("JSON parse error")
 		return
 	}
 
-	log.Println("Block data", prettyJSON.String())
+	log.Printf("Block data: %s", prettyJSON.String())
 }
 
 func doGetRequest(client *http.Client, url string) (BlockData, error) {
@@ -35,7 +43,7 @@ func doGetRequest(client *http.Client, url string) (BlockData, error) {
 	var block BlockData
 
 	if err != nil {
-		log.Println("Error performing GET request:", err)
+		log.Error().Err(err).Msg("Error performing GET request")
 		return block, err
 	}
 
@@ -63,7 +71,7 @@ func getHead(client *http.Client, config *config.Config) (string, error) {
 	var headData HeadData
 
 	if err != nil {
-		log.Println("Error getting chain head! Error:", err)
+		log.Error().Err(err).Msg("Error getting chain head! Error")
 		return "", err
 	}
 
@@ -109,9 +117,9 @@ func SlotStreamer(squeue *queue.SendQueue, conf *config.Config) {
 	headSlot, err := getHead(&client, conf)
 
 	if err != nil {
-		log.Fatalln("Error starting slotStreamer!")
+		log.Fatal().Err(err).Msg("Error starting slotStreamer!")
 	} else {
-		log.Printf("Got chain head, slot=%s\n", headSlot)
+		log.Printf("[slotStreamer] Got chain head, slot=%s", headSlot)
 	}
 
 	// Covert head to an integer for maths
@@ -122,7 +130,7 @@ func SlotStreamer(squeue *queue.SendQueue, conf *config.Config) {
 		delta := currSlot - conf.Stats.CurrentSlot
 
 		if delta > 0 {
-			currSlot = conf.Stats.CurrentSlot - 1
+			currSlot = conf.Stats.CurrentSlot + 1
 			log.Printf(
 				"[slotStreamer] %d slot(s) behind: starting sync from slot=%d",
 				delta, conf.Stats.CurrentSlot)
@@ -140,7 +148,7 @@ func SlotStreamer(squeue *queue.SendQueue, conf *config.Config) {
 	// Start streaming from headSlot
 	for {
 		if conf.Debug {
-			fmt.Println("Streaming slot", currSlot)
+			log.Printf("Streaming slot %d", currSlot)
 		}
 
 		// Set blocktime to the last "next" block
@@ -153,11 +161,7 @@ func SlotStreamer(squeue *queue.SendQueue, conf *config.Config) {
 		block, err := getSlot(&client, conf, slot)
 
 		if err != nil {
-			if conf.Debug {
-				fmt.Printf("↳ Error getting block: %s\n\n", err.Error())
-			}
-
-			log.Println("Error getting block ", slot, ", error:", err.Error())
+			log.Error().Err(err).Msgf("Error getting block %s", slot)
 
 			// If we error out due to e.g. network conditions, sleep and retry
 			time.Sleep(time.Second * time.Duration(5))
@@ -165,7 +169,7 @@ func SlotStreamer(squeue *queue.SendQueue, conf *config.Config) {
 		}
 
 		if conf.Debug {
-			fmt.Println("↳ Got block")
+			log.Print("↳ Got block")
 		}
 
 		// Parse block for slashings
@@ -193,25 +197,24 @@ func SlotStreamer(squeue *queue.SendQueue, conf *config.Config) {
 		nextBlockIn := nextBlockTime - currTime
 
 		if conf.Debug {
-			fmt.Printf("↳ Next slot in %d seconds\n\n", nextBlockIn)
+			log.Printf("↳ Next slot in %d seconds", nextBlockIn)
 		}
+
+		// Set stats in goroutine
+		go bumpStats(conf, currSlot, currentBlockTime)
 
 		if nextBlockIn >= 0 {
 			// Sleep until next block, add 3 seconds for some propagation time
 			time.Sleep(time.Second * time.Duration(nextBlockIn+3))
 		} else {
-			// Sleep _at minimum_ 0.2 seconds, which is Infura's rate-limit
-			time.Sleep(time.Second * time.Duration(1))
+			// Sleep >200 ms (Infura's rate-limit)
+			time.Sleep(time.Millisecond * time.Duration(300))
 		}
 
 		// Loop over to the next slot if no errors during request
 		if err == nil {
 			// Next slot
 			currSlot++
-
-			// Set stats
-			conf.Stats.CurrentSlot = currSlot
-			conf.Stats.BlockTime = currentBlockTime
 		}
 	}
 }

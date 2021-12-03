@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"log"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -10,8 +9,12 @@ import (
 	"slashcaster/bots"
 	"slashcaster/config"
 	"slashcaster/queue"
+	"slashcaster/spam"
 	"syscall"
 	"time"
+
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
 
 func setupSignalHandler(conf *config.Config) {
@@ -21,13 +24,13 @@ func setupSignalHandler(conf *config.Config) {
 
 	go func() {
 		<-channel
-		go log.Println("🚦 Received interrupt signal: dumping config...")
+		go log.Info().Msg("🚦 Received interrupt signal: dumping config...")
 		config.DumpConfig(conf)
 		os.Exit(0)
 	}()
 }
 
-func setupLogs(logFolder string) *os.File {
+func setupLogFile(logFolder string) *os.File {
 	// Log file
 	wd, _ := os.Getwd()
 	logPath := filepath.Join(wd, logFolder)
@@ -39,7 +42,7 @@ func setupLogs(logFolder string) *os.File {
 	logFilePath := filepath.Join(logPath, "bot.log")
 	logf, err := os.OpenFile(logFilePath, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
 	if err != nil {
-		log.Println(err)
+		log.Error().Err(err)
 	}
 
 	return logf
@@ -51,16 +54,34 @@ func main() {
 
 	// Load (or create) config, set version number
 	session.Config = config.LoadConfig()
-	session.Config.Version = "1.1.0"
+	session.Config.Version = "1.2.0"
+
+	// Setup anti-spam
+	session.Spam = &spam.AntiSpam{}
+	session.Spam.ChatBannedUntilTimestamp = make(map[int]int)
+	session.Spam.ChatLogs = make(map[int]spam.ChatLog)
+	session.Spam.ChatBanned = make(map[int]bool)
+	session.Spam.Rules = make(map[string]int64)
+
+	// Add rules
+	session.Spam.Rules["TimeBetweenCommands"] = 1
 
 	// Command line arguments
 	flag.BoolVar(&session.Config.Debug, "debug", false, "Specify to enable debug mode")
 	flag.Parse()
 
 	// Set-up logging
-	logf := setupLogs(session.Config.LogPath)
-	defer logf.Close()
-	log.SetOutput(logf)
+	if !session.Config.Debug {
+		// If not debugging, log to file
+		logf := setupLogFile(session.Config.LogPath)
+		defer logf.Close()
+
+		//log.Logger = zerolog.New(logf).With().Logger()
+		log.Logger = log.Output(zerolog.ConsoleWriter{Out: logf, NoColor: true})
+	} else {
+		// If debugging, output to console
+		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+	}
 
 	// Handle signals
 	setupSignalHandler(session.Config)

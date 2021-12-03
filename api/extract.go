@@ -2,7 +2,6 @@ package api
 
 import (
 	"fmt"
-	"log"
 	"slashcaster/config"
 	"slashcaster/queue"
 	"strconv"
@@ -11,6 +10,7 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/dustin/go-humanize/english"
 
+	"github.com/rs/zerolog/log"
 	tb "gopkg.in/tucnak/telebot.v2"
 )
 
@@ -194,7 +194,7 @@ func broadcastSlashing(squeue *queue.SendQueue, config *config.Config, slashingS
 
 		// Add to queue -> send
 		queue.AddToQueue(squeue, &message)
-		log.Println("📢 Broadcast slashing to configured channel!")
+		log.Print("📢 Broadcast slashing to configured channel!")
 	}
 
 	// Sleep a while before starting the mass-send so the channel message sends
@@ -215,5 +215,5 @@ func broadcastSlashing(squeue *queue.SendQueue, config *config.Config, slashingS
 	}
 
 	// Log amount of sent broadcasts
-	log.Println("📢 Broadcast slashing to", len(config.Broadcast.TelegramSubscribers), "chats!")
+	log.Print("📢 Broadcast slashing to", len(config.Broadcast.TelegramSubscribers), "chats!")
 }

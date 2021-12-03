@@ -5,9 +5,10 @@ import (
 	"log"
 	"slashcaster/config"
 	"slashcaster/queue"
+	"slashcaster/spam"
 	"time"
 
-	dg "github.com/bwmarrin/discordgo"
+	"github.com/dustin/go-humanize"
 	tb "gopkg.in/tucnak/telebot.v2"
 )
 
@@ -24,6 +25,11 @@ func SetupTelegramBot(session *config.Session, sendQueue *queue.SendQueue) {
 
 	// Start command handler
 	session.Telegram.Handle("/start", func(message *tb.Message) {
+		// Throttle requests
+		if !spam.CommandPreHandler(session.Spam, message.Sender.ID, message.Unixtime) {
+			return
+		}
+
 		text := "🔪 Welcome to Eth2 slasher! " +
 			"This bot broadcasts slashing events occurring on the Ethereum beacon chain.\n\n" +
 			"To subscribe to slashing messages, use the channel @ethslashings."
@@ -40,11 +46,21 @@ func SetupTelegramBot(session *config.Session, sendQueue *queue.SendQueue) {
 
 	// Output statistics
 	session.Telegram.Handle("/stats", func(message *tb.Message) {
-		ago := time.Now().Unix() - session.Config.Stats.BlockTime
+		// Throttle requests
+		if !spam.CommandPreHandler(session.Spam, message.Sender.ID, message.Unixtime) {
+			return
+		}
 
-		text := "🔪 *slashCaster statistics*\n" +
-			fmt.Sprintf("Current slot is %d\n", session.Config.Stats.CurrentSlot) +
-			fmt.Sprintf("__Last block %d seconds ago__\n", ago)
+		ago := time.Now().Unix() - session.Config.Stats.BlockTime
+		slot := humanize.Comma(int64(session.Config.Stats.CurrentSlot))
+		startedAgo := humanize.RelTime(
+			time.Now(), time.Unix(session.Config.Stats.StartTime, 0), "ago", "ago")
+
+		text := "🔪 *SlashCaster statistics*\n" +
+			fmt.Sprintf("Current slot: %s\n", slot) +
+			fmt.Sprintf("Blocks parsed: %d\n", session.Config.Stats.BlocksParsed) +
+			fmt.Sprintf("Last block %d seconds ago\n\n", ago) +
+			fmt.Sprintf("_Bot started %s_", startedAgo)
 
 		msg := queue.Message{
 			Type:      "telegram",
@@ -58,6 +74,12 @@ func SetupTelegramBot(session *config.Session, sendQueue *queue.SendQueue) {
 
 	// Subscribe command handler
 	session.Telegram.Handle("/subscribe", func(message *tb.Message) {
+		// Throttle requests
+		if !spam.CommandPreHandler(session.Spam, message.Sender.ID, message.Unixtime) {
+			return
+		}
+
+		// Subscribe
 		success := config.AddSubscriber(session.Config, message.Sender.ID)
 
 		var text string
@@ -79,6 +101,12 @@ func SetupTelegramBot(session *config.Session, sendQueue *queue.SendQueue) {
 
 	// Unsubscribe command handler
 	session.Telegram.Handle("/unsubscribe", func(message *tb.Message) {
+		// Throttle requests
+		if !spam.CommandPreHandler(session.Spam, message.Sender.ID, message.Unixtime) {
+			return
+		}
+
+		// Unsubscribe
 		success := config.RemoveSubscriber(session.Config, message.Sender.ID)
 
 		var text string
@@ -97,19 +125,4 @@ func SetupTelegramBot(session *config.Session, sendQueue *queue.SendQueue) {
 
 		queue.AddToQueue(sendQueue, &msg)
 	})
-}
-
-func SetupDiscordBot(session *config.Session, sendQueue *queue.SendQueue) {
-	// If bot is not configured, return
-	if session.Config.Tokens.Discord == "" {
-		return
-	}
-
-	var err error
-	session.Discord, err = dg.New("Bot " + session.Config.Tokens.Discord)
-
-	if err != nil {
-		log.Fatal("Error creating Discord bot:", err)
-		return
-	}
 }

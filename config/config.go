@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"os"
 	"path/filepath"
+	"slashcaster/spam"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/rs/zerolog/log"
 
 	dg "github.com/bwmarrin/discordgo"
 	tb "gopkg.in/tucnak/telebot.v2"
@@ -18,6 +20,7 @@ import (
 
 type Session struct {
 	Config   *Config
+	Spam     *spam.AntiSpam
 	Discord  *dg.Session
 	Telegram *tb.Bot
 }
@@ -40,13 +43,14 @@ type Tokens struct {
 }
 
 type Stats struct {
-	CurrentSlot   int   // Current slot
-	BlockTime     int64 // Current block time
-	MessagesSent  int   // Keep track of converted images
-	StartTime     int64 // Unix timestamp of startup time
-	AttSlashings  int   // Keep track of observed slashings
-	PropSlashings int   // Keep track of observed slashings
-	LastSlashing  int64 // Timestamp to keep track of last slashing
+	StartTime     int64  // Unix timestamp of startup time
+	CurrentSlot   int    // Current slot
+	BlockTime     int64  // Current block time
+	BlocksParsed  uint64 // Count of blocks parsed
+	AttSlashings  int    // Keep track of observed slashings
+	PropSlashings int    // Keep track of observed slashings
+	LastSlashing  int64  // Timestamp to keep track of last slashing
+	MessagesSent  int    // Keep track of converted images
 }
 
 type Broadcast struct {
@@ -154,7 +158,7 @@ func DumpConfig(config *Config) {
 	jsonbytes, err := json.MarshalIndent(config, "", "\t")
 
 	if err != nil {
-		log.Printf("⚠️ Error marshaling json! Err: %s\n", err)
+		log.Printf("⚠️ Error marshaling json! Err: %s", err)
 	}
 
 	wd, _ := os.Getwd()
@@ -162,7 +166,7 @@ func DumpConfig(config *Config) {
 
 	file, err := os.Create(configf)
 	if err != nil {
-		log.Println(err)
+		log.Error().Err(err)
 		os.Exit(1)
 	}
 
@@ -219,7 +223,7 @@ func LoadConfig() *Config {
 	// Config exists: load
 	fbytes, err := ioutil.ReadFile(configf)
 	if err != nil {
-		log.Println("⚠️ Error reading config file:", err)
+		log.Error().Err(err).Msg("⚠️ Error reading config file")
 		os.Exit(1)
 	}
 
@@ -229,7 +233,7 @@ func LoadConfig() *Config {
 	// Unmarshal into our config struct
 	err = json.Unmarshal(fbytes, &config)
 	if err != nil {
-		log.Println("⚠️ Error unmarshaling config json: ", err)
+		log.Error().Err(err).Msg("⚠️ Error unmarshaling config json")
 		os.Exit(1)
 	}
 

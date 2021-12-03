@@ -1,11 +1,11 @@
 package queue
 
 import (
-	"log"
 	"slashcaster/config"
 	"sync"
 	"time"
 
+	"github.com/rs/zerolog/log"
 	tb "gopkg.in/tucnak/telebot.v2"
 )
 
@@ -48,7 +48,7 @@ func MessageSender(queue *SendQueue, session *config.Session) {
 				if msg.Type == "telegram" {
 					_, err = session.Telegram.Send(tb.ChatID(int64(msg.Recipient)), msg.Message, &msg.Sopts)
 				} else if msg.Type == "discord" {
-					log.Println("Discord message sender not implemented!")
+					log.Warn().Msg("Discord message sender not implemented!")
 				}
 
 				if err != nil {
