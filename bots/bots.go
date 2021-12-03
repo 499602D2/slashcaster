@@ -1,6 +1,7 @@
 package bots
 
 import (
+	"fmt"
 	"log"
 	"slashcaster/config"
 	"slashcaster/queue"
@@ -10,7 +11,7 @@ import (
 	tb "gopkg.in/tucnak/telebot.v2"
 )
 
-func SetupTelegramBot(session *config.Session) {
+func SetupTelegramBot(session *config.Session, sendQueue *queue.SendQueue) {
 	var err error
 	session.Telegram, err = tb.NewBot(tb.Settings{
 		Token:  session.Config.Tokens.Telegram,
@@ -28,12 +29,31 @@ func SetupTelegramBot(session *config.Session) {
 			"To subscribe to slashing messages, use the channel @ethslashings."
 
 		msg := queue.Message{
+			Type:      "telegram",
 			Recipient: message.Sender.ID,
 			Message:   text,
 			Sopts:     tb.SendOptions{ParseMode: "Markdown"},
 		}
 
-		queue.AddToQueue(&session.Queue, &msg)
+		queue.AddToQueue(sendQueue, &msg)
+	})
+
+	// Output statistics
+	session.Telegram.Handle("/stats", func(message *tb.Message) {
+		ago := time.Now().Unix() - session.Config.Stats.BlockTime
+
+		text := "🔪 *slashCaster statistics*\n" +
+			fmt.Sprintf("Current slot is %d\n", session.Config.Stats.CurrentSlot) +
+			fmt.Sprintf("__Last block %d seconds ago__\n", ago)
+
+		msg := queue.Message{
+			Type:      "telegram",
+			Recipient: message.Sender.ID,
+			Message:   text,
+			Sopts:     tb.SendOptions{ParseMode: "Markdown"},
+		}
+
+		queue.AddToQueue(sendQueue, &msg)
 	})
 
 	// Subscribe command handler
@@ -48,12 +68,13 @@ func SetupTelegramBot(session *config.Session) {
 		}
 
 		msg := queue.Message{
+			Type:      "telegram",
 			Recipient: message.Sender.ID,
 			Message:   text,
 			Sopts:     tb.SendOptions{ParseMode: "Markdown"},
 		}
 
-		queue.AddToQueue(&session.Queue, &msg)
+		queue.AddToQueue(sendQueue, &msg)
 	})
 
 	// Unsubscribe command handler
@@ -68,16 +89,17 @@ func SetupTelegramBot(session *config.Session) {
 		}
 
 		msg := queue.Message{
+			Type:      "telegram",
 			Recipient: message.Sender.ID,
 			Message:   text,
 			Sopts:     tb.SendOptions{ParseMode: "Markdown"},
 		}
 
-		queue.AddToQueue(&session.Queue, &msg)
+		queue.AddToQueue(sendQueue, &msg)
 	})
 }
 
-func SetupDiscordBot(session *config.Session) {
+func SetupDiscordBot(session *config.Session, sendQueue *queue.SendQueue) {
 	// If bot is not configured, return
 	if session.Config.Tokens.Discord == "" {
 		return

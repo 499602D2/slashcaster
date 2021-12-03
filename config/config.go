@@ -12,20 +12,19 @@ import (
 	"sync"
 	"time"
 
-	"slashcaster/queue"
-
 	dg "github.com/bwmarrin/discordgo"
 	tb "gopkg.in/tucnak/telebot.v2"
 )
 
 type Session struct {
 	Config   *Config
-	Queue    queue.SendQueue
 	Discord  *dg.Session
 	Telegram *tb.Bot
 }
 
 type Config struct {
+	Version   string     // Version number
+	Debug     bool       // Is debugging enabled?
 	LogPath   string     // Folder to log to
 	RateLimit int        // Rate-limit, messages/second
 	Tokens    Tokens     // Tokens for auth
@@ -41,6 +40,8 @@ type Tokens struct {
 }
 
 type Stats struct {
+	CurrentSlot   int   // Current slot
+	BlockTime     int64 // Current block time
 	MessagesSent  int   // Keep track of converted images
 	StartTime     int64 // Unix timestamp of startup time
 	AttSlashings  int   // Keep track of observed slashings

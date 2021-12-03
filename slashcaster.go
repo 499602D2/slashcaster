@@ -1,15 +1,31 @@
 package main
 
 import (
+	"flag"
 	"log"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"slashcaster/api"
 	"slashcaster/bots"
 	"slashcaster/config"
 	"slashcaster/queue"
+	"syscall"
 	"time"
 )
+
+func setupSignalHandler(conf *config.Config) {
+	// Listens for incoming interrupt signals, dumps config if detected
+	channel := make(chan os.Signal)
+	signal.Notify(channel, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		<-channel
+		go log.Println("🚦 Received interrupt signal: dumping config...")
+		config.DumpConfig(conf)
+		os.Exit(0)
+	}()
+}
 
 func setupLogs(logFolder string) *os.File {
 	// Log file
@@ -33,29 +49,37 @@ func main() {
 	// Create session
 	session := config.Session{}
 
-	// Load (or create) config
+	// Load (or create) config, set version number
 	session.Config = config.LoadConfig()
+	session.Config.Version = "1.1.0"
+
+	// Command line arguments
+	flag.BoolVar(&session.Config.Debug, "debug", false, "Specify to enable debug mode")
+	flag.Parse()
 
 	// Set-up logging
 	logf := setupLogs(session.Config.LogPath)
 	defer logf.Close()
 	log.SetOutput(logf)
 
-	// Set-up Telegram bot
-	bots.SetupTelegramBot(&session)
-
-	// Set-up Discord bot
-	bots.SetupDiscordBot(&session)
+	// Handle signals
+	setupSignalHandler(session.Config)
 
 	// Create send queue, start MessageSender in a goroutine
-	session.Queue = queue.SendQueue{MessagesPerSecond: session.Config.RateLimit}
-	go queue.MessageSender(&session.Queue, session.Telegram)
+	sendQueue := queue.SendQueue{MessagesPerSecond: session.Config.RateLimit}
+	go queue.MessageSender(&sendQueue, &session)
+
+	// Set-up Telegram bot
+	bots.SetupTelegramBot(&session, &sendQueue)
+
+	// Set-up Discord bot
+	bots.SetupDiscordBot(&session, &sendQueue)
 
 	// Start slotStreamer in a goroutine
-	go api.SlotStreamer(&session.Queue, session.Config)
+	go api.SlotStreamer(&sendQueue, session.Config)
 
 	// Log start
-	log.Printf("🔪 SlashCaster started at %s", time.Now())
+	log.Printf("🔪 SlashCaster %s started at %s", session.Config.Version, time.Now())
 
 	// Start Telegram bot
 	/*

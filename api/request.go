@@ -10,216 +10,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/dustin/go-humanize"
-	"github.com/dustin/go-humanize/english"
-
 	"slashcaster/config"
 	"slashcaster/queue"
-
-	tb "gopkg.in/tucnak/telebot.v2"
 )
-
-func slashingString(event SlashingEvent, config *config.Config) string {
-	// Slot to int
-	slotInt, _ := strconv.Atoi(event.Slot)
-	slashCount := english.Plural(len(event.Slashings), "validator", "validators")
-	hSlot := humanize.Comma(int64(slotInt))
-
-	// Beaconcha.in validator and slot URLs
-	bc := "https://beaconcha.in/validator/"
-	bcS := "https://beaconcha.in/block/" + event.Slot
-
-	// Header
-	slashingStr := fmt.Sprintf("🔪 %s slashed in slot [%s](%s)\n", slashCount, hSlot, bcS)
-	slashingStr += "\nValidators slashed\n"
-
-	// Loop over all found slashings, add to slashingStr
-	for _, slashing := range event.Slashings {
-		// Link to the validator's page
-		bcUrl := bc + slashing.ValidatorIndex
-
-		// Assign strings according to att./prop. violation bools
-		if slashing.ProposerViolation && slashing.AttestationViolation {
-			// If slashed due to att. + prop. violation, do a custom string
-			slashingStr += fmt.Sprintf("[%s](%s): attestator & proposer violation\n", slashing.ValidatorIndex, bcUrl)
-		} else {
-			// Otherwise, assign string according to violation
-			if slashing.AttestationViolation {
-				slashingStr += fmt.Sprintf("[%s](%s): attestor violation\n", slashing.ValidatorIndex, bcUrl)
-			} else if slashing.ProposerViolation {
-				slashingStr += fmt.Sprintf("[%s](%s): proposer violation\n", slashing.ValidatorIndex, bcUrl)
-			}
-		}
-	}
-
-	// Footer with time since last slashing before this event
-	since := humanize.RelTime(time.Unix(config.Stats.LastSlashing, 0), time.Now(), "since", "since")
-	footer := "\n" + fmt.Sprintf(`_%s last slashing\._`, since)
-	slashingStr += footer
-
-	return slashingStr
-}
-
-func extractAttestionViolations(att AttestationViolation) []Slashing {
-	// Store indices of slashed validators
-	var indices []string
-
-	// Iterate over Attestation1 and Attestation2
-	for _, index1 := range att.Attestation1.AttestingIndices {
-		for _, index2 := range att.Attestation2.AttestingIndices {
-			if index1 == index2 {
-				indices = append(indices, index1)
-			}
-		}
-	}
-
-	// Iterate over indices of slashed validators
-	var slashedValidators []Slashing
-	for _, index := range indices {
-		slashing := Slashing{
-			AttestationViolation: true,
-			ValidatorIndex:       index,
-		}
-
-		slashedValidators = append(slashedValidators, slashing)
-	}
-
-	return slashedValidators
-}
-
-func extractProposerViolations(prop ProposerViolation, slashed []Slashing) []Slashing {
-	// Index 1
-	index := prop.SignedHeader1.Message.ProposerIndex
-
-	var exists bool
-	for _, slashed := range slashed {
-		if slashed.Slot == index {
-			exists = true
-		}
-	}
-
-	if !exists {
-		validator := Slashing{
-			ProposerViolation: true,
-			ValidatorIndex:    index,
-			Slot:              prop.SignedHeader1.Message.Slot,
-		}
-
-		slashed = append(slashed, validator)
-	}
-
-	// Index 2
-	index = prop.SignedHeader2.Message.ProposerIndex
-
-	exists = false
-	for _, slashed := range slashed {
-		if slashed.ValidatorIndex == index {
-			exists = true
-		}
-	}
-
-	if !exists {
-		validator := Slashing{
-			ProposerViolation: true,
-			ValidatorIndex:    index,
-			Slot:              prop.SignedHeader2.Message.Slot,
-		}
-
-		slashed = append(slashed, validator)
-	}
-
-	return slashed
-}
-
-func findSlashings(block BlockData, slot string) SlashingEvent {
-	// Init slashings struct
-	var slashings []Slashing
-
-	// Pointers for shorter lines
-	attSlashings := &block.Block.Message.Body.AttesterSlashings
-	propSlashings := &block.Block.Message.Body.ProposerSlashings
-
-	// Length check
-	if len(*attSlashings) == 0 && len(*propSlashings) == 0 {
-		return SlashingEvent{}
-	}
-
-	// Look for attestation violations
-	if len(*attSlashings) != 0 {
-		for _, attSlashing := range *attSlashings {
-			// Extract attestation violations
-			slashedValidators := extractAttestionViolations(attSlashing)
-
-			// Merge the two slices
-			slashings = append(slashings, slashedValidators...)
-		}
-	}
-
-	// Set block correctly for each slashed validator
-	for _, slashing := range slashings {
-		slashing.Slot = block.Block.Message.Slot
-	}
-
-	// Look for proposal violations
-	if len(*propSlashings) != 0 {
-		for _, propSlashing := range *propSlashings {
-			// Extract attestation violations
-			slashings = extractProposerViolations(propSlashing, slashings)
-		}
-	}
-
-	event := SlashingEvent{
-		Slashings:     slashings,
-		AttSlashings:  len(*attSlashings),
-		PropSlashings: len(*propSlashings),
-		Slot:          slot,
-	}
-
-	return event
-}
-
-func broadcastSlashing(squeue *queue.SendQueue, config *config.Config, slashingString string) {
-	/*
-		Broadcasts the slashing event to all configured channels.
-
-		1. Telegram announcement channel
-		2. Discord groups configured
-		3. Telegram subscribers (per-chat)
-	*/
-
-	// Send to Telegram channel
-	if config.Broadcast.TelegramChannel != 0 {
-		// Create message object
-		message := queue.Message{
-			Recipient: int(config.Broadcast.TelegramChannel),
-			Message:   slashingString,
-			Sopts:     tb.SendOptions{ParseMode: "MarkdownV2", DisableWebPagePreview: true},
-		}
-
-		// Add to queue -> send
-		queue.AddToQueue(squeue, &message)
-		log.Println("📢 Broadcast slashing to configured channel!")
-	}
-
-	// Sleep a while before starting the mass-send so the channel message sends
-	time.Sleep(time.Second)
-
-	// Loop over subscribers
-	for _, chatId := range config.Broadcast.TelegramSubscribers {
-		// Create message object
-		message := queue.Message{
-			Recipient: chatId,
-			Message:   slashingString,
-			Sopts:     tb.SendOptions{ParseMode: "MarkdownV2", DisableWebPagePreview: true},
-		}
-
-		// Add to queue -> send
-		queue.AddToQueue(squeue, &message)
-	}
-
-	// Log amount of sent broadcasts
-	log.Println("📢 Broadcast slashing to", len(config.Broadcast.TelegramSubscribers), "chats!")
-}
 
 func prettyPrintJson(body []byte) {
 	// Pretty-print JSON
@@ -242,7 +35,7 @@ func doGetRequest(url string) (BlockData, error) {
 	var block BlockData
 
 	if err != nil {
-		fmt.Println("Error performing att. slashing GET request:", err)
+		log.Println("Error performing att. slashing GET request:", err)
 		return block, err
 	}
 
@@ -259,7 +52,7 @@ func doGetRequest(url string) (BlockData, error) {
 	return block, err
 }
 
-func GetHead(config *config.Config) (string, error) {
+func getHead(config *config.Config) (string, error) {
 	// Endpoint
 	url := config.Tokens.Infura + "/eth/v1/node/syncing"
 
@@ -270,7 +63,7 @@ func GetHead(config *config.Config) (string, error) {
 	var headData HeadData
 
 	if err != nil {
-		fmt.Println("Error getting chain head! Error:", err)
+		log.Println("Error getting chain head! Error:", err)
 		return "", err
 	}
 
@@ -284,7 +77,7 @@ func GetHead(config *config.Config) (string, error) {
 	return headData.HeadData.HeadSlot, nil
 }
 
-func GetSlot(config *config.Config, slot string) (BlockData, error) {
+func getSlot(config *config.Config, slot string) (BlockData, error) {
 	// If slot is pre-Altair, use eth/v1 endpoint
 	altairSlot := 74240 * 32
 	currSlot, _ := strconv.Atoi(slot)
@@ -301,8 +94,14 @@ func GetSlot(config *config.Config, slot string) (BlockData, error) {
 }
 
 func SlotStreamer(squeue *queue.SendQueue, conf *config.Config) {
+	/*
+		For testing with older slots, specify e.g.:
+			var err error
+			headSlot := "2624391"
+	*/
+
 	// Get chain head
-	headSlot, err := GetHead(conf)
+	headSlot, err := getHead(conf)
 
 	if err != nil {
 		log.Fatalln("Error starting slotStreamer!")
@@ -312,6 +111,18 @@ func SlotStreamer(squeue *queue.SendQueue, conf *config.Config) {
 
 	// Covert head to an integer for maths
 	currSlot, _ := strconv.Atoi(headSlot)
+
+	// Check how far behind we are
+	if conf.Stats.CurrentSlot != 0 {
+		delta := currSlot - conf.Stats.CurrentSlot
+
+		if delta > 0 {
+			currSlot = conf.Stats.CurrentSlot - 1
+			log.Printf(
+				"[slotStreamer] %d slots behind: starting sync from slot=%d",
+				delta, conf.Stats.CurrentSlot)
+		}
+	}
 
 	// Altair activation time + slot
 	altairStart := 1635332183
@@ -323,6 +134,10 @@ func SlotStreamer(squeue *queue.SendQueue, conf *config.Config) {
 
 	// Start streaming from headSlot
 	for {
+		if conf.Debug {
+			fmt.Println("Streaming slot", currSlot)
+		}
+
 		// Set blocktime to the last "next" block
 		currentBlockTime := nextBlockTime
 
@@ -330,7 +145,7 @@ func SlotStreamer(squeue *queue.SendQueue, conf *config.Config) {
 		slot := strconv.FormatInt(int64(currSlot), 10)
 
 		// Get block
-		block, err := GetSlot(conf, slot)
+		block, err := getSlot(conf, slot)
 
 		if err != nil {
 			log.Println("Error getting block ", slot, ", error:", err.Error())
@@ -360,17 +175,26 @@ func SlotStreamer(squeue *queue.SendQueue, conf *config.Config) {
 		currTime := time.Now().Unix()
 		nextBlockIn := nextBlockTime - currTime
 
+		if conf.Debug {
+			fmt.Printf("↳ Next slot in %d seconds\n\n", nextBlockIn)
+		}
+
 		if nextBlockIn >= 0 {
 			// Sleep until next block, add 3 seconds for some propagation time
 			time.Sleep(time.Second * time.Duration(nextBlockIn+3))
 		} else {
 			// Sleep _at minimum_ 0.2 seconds, which is Infura's rate-limit
-			time.Sleep(time.Second * time.Duration(5))
+			time.Sleep(time.Second * time.Duration(1))
 		}
 
 		// Loop over to the next slot if no errors during request
 		if err == nil {
+			// Next slot
 			currSlot++
+
+			// Set stats
+			conf.Stats.CurrentSlot = currSlot
+			conf.Stats.BlockTime = currentBlockTime
 		}
 	}
 }

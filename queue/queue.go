@@ -2,6 +2,7 @@ package queue
 
 import (
 	"log"
+	"slashcaster/config"
 	"sync"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 )
 
 type Message struct {
+	Type      string         // Type of the message ("telegram", "discord")
 	Recipient int            // Recipient of the message
 	Message   string         // Caption for the photo
 	Sopts     tb.SendOptions // Send options
@@ -31,7 +33,7 @@ func handleSendError(msg Message, err error) {
 	log.Printf("Error sending message: %s", err.Error())
 }
 
-func MessageSender(queue *SendQueue, bot *tb.Bot) {
+func MessageSender(queue *SendQueue, session *config.Session) {
 	/* Function clears the SendQueue and stays within API limits while doing so */
 	for {
 		// If queue is not empty, clear it
@@ -42,7 +44,12 @@ func MessageSender(queue *SendQueue, bot *tb.Bot) {
 			// Iterate over queue
 			for i, msg := range queue.MessageQueue {
 				// Send message
-				_, err := bot.Send(tb.ChatID(int64(msg.Recipient)), msg.Message, &msg.Sopts)
+				var err error
+				if msg.Type == "telegram" {
+					_, err = session.Telegram.Send(tb.ChatID(int64(msg.Recipient)), msg.Message, &msg.Sopts)
+				} else if msg.Type == "discord" {
+					log.Println("Discord message sender not implemented!")
+				}
 
 				if err != nil {
 					go handleSendError(msg, err)
