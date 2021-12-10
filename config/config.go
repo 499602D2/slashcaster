@@ -15,7 +15,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	dg "github.com/bwmarrin/discordgo"
-	tb "gopkg.in/tucnak/telebot.v2"
+	tb "gopkg.in/tucnak/telebot.v3"
 )
 
 type Session struct {
@@ -28,6 +28,7 @@ type Session struct {
 type Config struct {
 	Version   string     // Version number
 	Debug     bool       // Is debugging enabled?
+	NoStream  bool       // Skip slot streaming?
 	LogPath   string     // Folder to log to
 	RateLimit int        // Rate-limit, messages/second
 	Tokens    Tokens     // Tokens for auth
@@ -44,7 +45,7 @@ type Tokens struct {
 
 type Stats struct {
 	StartTime     int64  // Unix timestamp of startup time
-	CurrentSlot   int    // Current slot
+	CurrentSlot   int64  // Current slot
 	BlockTime     int64  // Current block time
 	BlocksParsed  uint64 // Count of blocks parsed
 	AttSlashings  int    // Keep track of observed slashings
@@ -54,9 +55,9 @@ type Stats struct {
 }
 
 type Broadcast struct {
-	TelegramOwner       int64 // Owner of the bot: skips logging
-	TelegramChannel     int64 // The channel the bot broadcasts in
-	TelegramSubscribers []int // Telegram subscribers
+	TelegramOwner       int64   // Owner of the bot: skips logging
+	TelegramChannel     int64   // The channel the bot broadcasts in
+	TelegramSubscribers []int64 // Telegram subscribers
 	DiscordGuild        string
 }
 
@@ -77,7 +78,7 @@ func SlashingObserved(config *Config, attCount int, propCount int, time int64) {
 	DumpConfig(config)
 }
 
-func AddSubscriber(config *Config, chatId int) bool {
+func AddSubscriber(config *Config, chatId int64) bool {
 	// Lock struct
 	config.Mutex.Lock()
 
@@ -113,7 +114,7 @@ func AddSubscriber(config *Config, chatId int) bool {
 	return true
 }
 
-func RemoveSubscriber(config *Config, chatId int) bool {
+func RemoveSubscriber(config *Config, chatId int64) bool {
 	// Lock struct
 	config.Mutex.Lock()
 

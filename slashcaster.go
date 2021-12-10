@@ -54,13 +54,13 @@ func main() {
 
 	// Load (or create) config, set version number
 	session.Config = config.LoadConfig()
-	session.Config.Version = "1.2.0"
+	session.Config.Version = "1.3.0"
 
 	// Setup anti-spam
 	session.Spam = &spam.AntiSpam{}
-	session.Spam.ChatBannedUntilTimestamp = make(map[int]int)
-	session.Spam.ChatLogs = make(map[int]spam.ChatLog)
-	session.Spam.ChatBanned = make(map[int]bool)
+	session.Spam.ChatBannedUntilTimestamp = make(map[int64]int64)
+	session.Spam.ChatLogs = make(map[int64]spam.ChatLog)
+	session.Spam.ChatBanned = make(map[int64]bool)
 	session.Spam.Rules = make(map[string]int64)
 
 	// Add rules
@@ -68,6 +68,7 @@ func main() {
 
 	// Command line arguments
 	flag.BoolVar(&session.Config.Debug, "debug", false, "Specify to enable debug mode")
+	flag.BoolVar(&session.Config.NoStream, "no-stream", false, "Specify to disable slot streaming")
 	flag.Parse()
 
 	// Set-up logging
@@ -96,8 +97,12 @@ func main() {
 	// Set-up Discord bot
 	bots.SetupDiscordBot(&session, &sendQueue)
 
-	// Start slotStreamer in a goroutine
-	go api.SlotStreamer(&sendQueue, session.Config)
+	// Start slotStreamer in a goroutine, unless explicitly disabled
+	if !session.Config.NoStream {
+		go api.SlotStreamer(&sendQueue, session.Config)
+	} else {
+		log.Print("⛔️ Slot-streaming explicitly disabled!")
+	}
 
 	// Log start
 	log.Printf("🔪 SlashCaster %s started at %s", session.Config.Version, time.Now())

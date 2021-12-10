@@ -14,7 +14,7 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-func bumpStats(conf *config.Config, currSlot int, blockTime int64) {
+func bumpStats(conf *config.Config, currSlot int64, blockTime int64) {
 	conf.Mutex.Lock()
 	conf.Stats.BlocksParsed++
 	conf.Stats.CurrentSlot = currSlot
@@ -122,8 +122,8 @@ func SlotStreamer(squeue *queue.SendQueue, conf *config.Config) {
 		log.Printf("[slotStreamer] Got chain head, slot=%s", headSlot)
 	}
 
-	// Covert head to an integer for maths
-	currSlot, _ := strconv.Atoi(headSlot)
+	// Covert head to an i64 for maths
+	currSlot, _ := strconv.ParseInt(headSlot, 10, 64)
 
 	// Check how far behind we are
 	if conf.Stats.CurrentSlot != 0 {
@@ -138,12 +138,12 @@ func SlotStreamer(squeue *queue.SendQueue, conf *config.Config) {
 	}
 
 	// Altair activation time + slot
-	altairStart := 1635332183
-	altairSlot := 74240 * 32
+	altairStart := int64(1635332183)
+	altairSlot := int64(74240 * 32)
 
 	// Get current block time
 	slotSinceAltair := currSlot - altairSlot
-	nextBlockTime := int64(altairStart + slotSinceAltair*12)
+	nextBlockTime := altairStart + slotSinceAltair*12
 
 	// Start streaming from headSlot
 	for {

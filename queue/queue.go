@@ -6,12 +6,12 @@ import (
 	"time"
 
 	"github.com/rs/zerolog/log"
-	tb "gopkg.in/tucnak/telebot.v2"
+	tb "gopkg.in/tucnak/telebot.v3"
 )
 
 type Message struct {
 	Type      string         // Type of the message ("telegram", "discord")
-	Recipient int            // Recipient of the message
+	Recipient int64          // Recipient of the message
 	Message   string         // Caption for the photo
 	Sopts     tb.SendOptions // Send options
 }

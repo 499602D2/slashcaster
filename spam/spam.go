@@ -9,11 +9,11 @@ import (
 
 type AntiSpam struct {
 	/* In-memory struct keeping track of banned chats and per-chat activity */
-	ChatBanned               map[int]bool     // Simple "if ChatBanned[chat] { do }" checks
-	ChatBannedUntilTimestamp map[int]int      // How long banned chats are banned for
-	ChatLogs                 map[int]ChatLog  // Map chat ID to a ChatLog struct
-	Rules                    map[string]int64 // Arbitrary rules for code flexibility
-	Mutex                    sync.Mutex       // Mutex to avoid concurrent map writes
+	ChatBanned               map[int64]bool    // Simple "if ChatBanned[chat] { do }" checks
+	ChatBannedUntilTimestamp map[int64]int64   // How long banned chats are banned for
+	ChatLogs                 map[int64]ChatLog // Map chat ID to a ChatLog struct
+	Rules                    map[string]int64  // Arbitrary rules for code flexibility
+	Mutex                    sync.Mutex        // Mutex to avoid concurrent map writes
 }
 
 type ChatLog struct {
@@ -22,7 +22,7 @@ type ChatLog struct {
 	CommandSpamOffenses         int   // Count of spam offences (not used yet)
 }
 
-func CommandPreHandler(spam *AntiSpam, chat int, sentAt int64) bool {
+func CommandPreHandler(spam *AntiSpam, chat int64, sentAt int64) bool {
 	/* When user sends a command, verify the chat is eligible for a command parse. */
 	spam.Mutex.Lock()
 	chatLog := spam.ChatLogs[chat]

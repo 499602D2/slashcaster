@@ -11,7 +11,7 @@ import (
 	"github.com/dustin/go-humanize/english"
 
 	"github.com/rs/zerolog/log"
-	tb "gopkg.in/tucnak/telebot.v2"
+	tb "gopkg.in/tucnak/telebot.v3"
 )
 
 func slashingString(event SlashingEvent, config *config.Config) string {
@@ -187,7 +187,7 @@ func broadcastSlashing(squeue *queue.SendQueue, config *config.Config, slashingS
 		// Create message object
 		message := queue.Message{
 			Type:      "telegram",
-			Recipient: int(config.Broadcast.TelegramChannel),
+			Recipient: config.Broadcast.TelegramChannel,
 			Message:   slashingString,
 			Sopts:     tb.SendOptions{ParseMode: "MarkdownV2", DisableWebPagePreview: true},
 		}

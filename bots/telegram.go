@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
-	tb "gopkg.in/tucnak/telebot.v2"
+	tb "gopkg.in/tucnak/telebot.v3"
 )
 
 func SetupTelegramBot(session *config.Session, sendQueue *queue.SendQueue) {
@@ -24,10 +24,13 @@ func SetupTelegramBot(session *config.Session, sendQueue *queue.SendQueue) {
 	}
 
 	// Start command handler
-	session.Telegram.Handle("/start", func(message *tb.Message) {
+	session.Telegram.Handle("/start", func(c tb.Context) error {
+		// Extract message
+		message := *c.Message()
+
 		// Throttle requests
 		if !spam.CommandPreHandler(session.Spam, message.Sender.ID, message.Unixtime) {
-			return
+			return nil
 		}
 
 		text := "🔪 Welcome to Eth2 slasher! " +
@@ -42,13 +45,17 @@ func SetupTelegramBot(session *config.Session, sendQueue *queue.SendQueue) {
 		}
 
 		queue.AddToQueue(sendQueue, &msg)
+		return nil
 	})
 
 	// Output statistics
-	session.Telegram.Handle("/stats", func(message *tb.Message) {
+	session.Telegram.Handle("/stats", func(c tb.Context) error {
+		// Extract message
+		message := *c.Message()
+
 		// Throttle requests
 		if !spam.CommandPreHandler(session.Spam, message.Sender.ID, message.Unixtime) {
-			return
+			return nil
 		}
 
 		ago := time.Now().Unix() - session.Config.Stats.BlockTime
@@ -70,13 +77,17 @@ func SetupTelegramBot(session *config.Session, sendQueue *queue.SendQueue) {
 		}
 
 		queue.AddToQueue(sendQueue, &msg)
+		return nil
 	})
 
 	// Subscribe command handler
-	session.Telegram.Handle("/subscribe", func(message *tb.Message) {
+	session.Telegram.Handle("/subscribe", func(c tb.Context) error {
+		// Extract message
+		message := *c.Message()
+
 		// Throttle requests
 		if !spam.CommandPreHandler(session.Spam, message.Sender.ID, message.Unixtime) {
-			return
+			return nil
 		}
 
 		// Subscribe
@@ -86,7 +97,8 @@ func SetupTelegramBot(session *config.Session, sendQueue *queue.SendQueue) {
 		if success {
 			text = "✅ Successfully subscribed! You will now be notified of slashings."
 		} else {
-			text = "You are already subscribed to notifications!"
+			text = "ℹ️ You are already subscribed to notifications!\n\n" +
+				"_To unsubscribe, use /unsubscribe._"
 		}
 
 		msg := queue.Message{
@@ -97,13 +109,17 @@ func SetupTelegramBot(session *config.Session, sendQueue *queue.SendQueue) {
 		}
 
 		queue.AddToQueue(sendQueue, &msg)
+		return nil
 	})
 
 	// Unsubscribe command handler
-	session.Telegram.Handle("/unsubscribe", func(message *tb.Message) {
+	session.Telegram.Handle("/unsubscribe", func(c tb.Context) error {
+		// Extract message
+		message := *c.Message()
+
 		// Throttle requests
 		if !spam.CommandPreHandler(session.Spam, message.Sender.ID, message.Unixtime) {
-			return
+			return nil
 		}
 
 		// Unsubscribe
@@ -113,7 +129,8 @@ func SetupTelegramBot(session *config.Session, sendQueue *queue.SendQueue) {
 		if success {
 			text = "✅ Successfully unsubscribed! No notifications will be sent to you."
 		} else {
-			text = "Nothing to do, you will not receive notifications!"
+			text = "ℹ️Nothing to do, you will not receive notifications!\n\n" +
+				"_To receive notifications, use /subscribe._"
 		}
 
 		msg := queue.Message{
@@ -124,5 +141,6 @@ func SetupTelegramBot(session *config.Session, sendQueue *queue.SendQueue) {
 		}
 
 		queue.AddToQueue(sendQueue, &msg)
+		return nil
 	})
 }
