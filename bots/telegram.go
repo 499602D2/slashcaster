@@ -60,12 +60,13 @@ func SetupTelegramBot(session *config.Session, sendQueue *queue.SendQueue) {
 
 		ago := time.Now().Unix() - session.Config.Stats.BlockTime
 		slot := humanize.Comma(int64(session.Config.Stats.CurrentSlot))
+		blocksParsed := humanize.Comma(int64(session.Config.Stats.BlocksParsed))
 		startedAgo := humanize.RelTime(
 			time.Now(), time.Unix(session.Config.Stats.StartTime, 0), "ago", "ago")
 
 		text := "🔪 *SlashCaster statistics*\n" +
 			fmt.Sprintf("Current slot: %s\n", slot) +
-			fmt.Sprintf("Blocks parsed: %d\n", session.Config.Stats.BlocksParsed) +
+			fmt.Sprintf("Blocks parsed: %s\n", blocksParsed) +
 			fmt.Sprintf("Last block %d seconds ago\n\n", ago) +
 			fmt.Sprintf("_Bot started %s_", startedAgo)
 

@@ -54,7 +54,7 @@ func main() {
 
 	// Load (or create) config, set version number
 	session.Config = config.LoadConfig("")
-	session.Config.Version = "1.4.0"
+	session.Config.Version = "1.4.1"
 
 	// Setup anti-spam
 	session.Spam = &spam.AntiSpam{}
