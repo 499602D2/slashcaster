@@ -176,12 +176,18 @@ func DumpConfig(config *Config) {
 	file.Close()
 }
 
-func LoadConfig() *Config {
+func LoadConfig(cfgPath string) *Config {
 	/* Loads the config, returns a pointer to it */
 
 	// Get log file's path relative to working dir
-	wd, _ := os.Getwd()
-	configPath := filepath.Join(wd, "config")
+	var configPath string
+	if cfgPath == "" {
+		wd, _ := os.Getwd()
+		configPath = filepath.Join(wd, "config")
+	} else {
+		configPath = cfgPath
+	}
+
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		_ = os.Mkdir(configPath, os.ModePerm)
 	}

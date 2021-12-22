@@ -134,9 +134,9 @@ func findSlashings(block BlockData, slot string) SlashingEvent {
 	attSlashings := &block.Block.Message.Body.AttesterSlashings
 	propSlashings := &block.Block.Message.Body.ProposerSlashings
 
-	// Length check
+	// Length check; if zero slashings, return immediately
 	if len(*attSlashings) == 0 && len(*propSlashings) == 0 {
-		return SlashingEvent{}
+		return SlashingEvent{Slot: slot}
 	}
 
 	// Look for attestation violations
@@ -150,17 +150,20 @@ func findSlashings(block BlockData, slot string) SlashingEvent {
 		}
 	}
 
-	// Set block correctly for each slashed validator
-	for _, slashing := range slashings {
-		slashing.Slot = block.Block.Message.Slot
-	}
-
 	// Look for proposal violations
 	if len(*propSlashings) != 0 {
 		for _, propSlashing := range *propSlashings {
-			// Extract attestation violations
-			slashings = extractProposerViolations(propSlashing, slashings)
+			// Extract proposer violations
+			slashedValidators := extractProposerViolations(propSlashing, slashings)
+
+			// Merge the two slices
+			slashings = append(slashings, slashedValidators...)
 		}
+	}
+
+	// Set block correctly for each slashed validator
+	for _, slashing := range slashings {
+		slashing.Slot = block.Block.Message.Slot
 	}
 
 	event := SlashingEvent{

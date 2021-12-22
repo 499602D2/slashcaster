@@ -53,8 +53,8 @@ func main() {
 	session := config.Session{}
 
 	// Load (or create) config, set version number
-	session.Config = config.LoadConfig()
-	session.Config.Version = "1.3.0"
+	session.Config = config.LoadConfig("")
+	session.Config.Version = "1.4.0"
 
 	// Setup anti-spam
 	session.Spam = &spam.AntiSpam{}
@@ -78,10 +78,10 @@ func main() {
 		defer logf.Close()
 
 		//log.Logger = zerolog.New(logf).With().Logger()
-		log.Logger = log.Output(zerolog.ConsoleWriter{Out: logf, NoColor: true})
+		log.Logger = log.Output(zerolog.ConsoleWriter{Out: logf, NoColor: true, TimeFormat: time.RFC822Z})
 	} else {
 		// If debugging, output to console
-		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC822Z})
 	}
 
 	// Handle signals

@@ -52,7 +52,7 @@ func MessageSender(queue *SendQueue, session *config.Session) {
 				}
 
 				if err != nil {
-					go handleSendError(msg, err)
+					handleSendError(msg, err)
 				}
 
 				// Sleep long enough to stay within API limits: convert messagesPerSecond to ms

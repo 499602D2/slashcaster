@@ -102,15 +102,9 @@ func getSlot(client *http.Client, config *config.Config, slot string) (BlockData
 }
 
 func SlotStreamer(squeue *queue.SendQueue, conf *config.Config) {
-	/*
-		For testing with older slots, specify e.g.:
-			var err error
-			headSlot := "2624391"
-	*/
-
 	// HTTP client
 	client := http.Client{
-		Timeout: 5 * time.Second,
+		Timeout: 10 * time.Second,
 	}
 
 	// Get chain head
@@ -175,7 +169,7 @@ func SlotStreamer(squeue *queue.SendQueue, conf *config.Config) {
 		// Parse block for slashings
 		foundSlashings := findSlashings(block, slot)
 
-		if len(foundSlashings.Slashings) != 0 {
+		if len(foundSlashings.Slashings) > 0 {
 			// Log slashing event
 			log.Printf("[slotStreamer] Found %d slashing(s) in slot=%s", len(foundSlashings.Slashings), slot)
 
@@ -183,7 +177,7 @@ func SlotStreamer(squeue *queue.SendQueue, conf *config.Config) {
 			slashStr := slashingString(foundSlashings, conf)
 
 			// Broadcast the slashing
-			go broadcastSlashing(squeue, conf, slashStr)
+			broadcastSlashing(squeue, conf, slashStr)
 
 			// Save slashing in statistics
 			config.SlashingObserved(conf, foundSlashings.AttSlashings, foundSlashings.PropSlashings, currentBlockTime)
