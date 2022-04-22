@@ -2,11 +2,12 @@ package api
 
 import (
 	"fmt"
-	"net/http"
 	"testing"
 	"time"
 
 	"slashcaster/config"
+
+	"github.com/go-resty/resty/v2"
 )
 
 func TestSlashingExtraction(t *testing.T) {
@@ -14,9 +15,8 @@ func TestSlashingExtraction(t *testing.T) {
 	cfg := config.LoadConfig("../config")
 
 	// Create http-client
-	client := http.Client{
-		Timeout: 5 * time.Second,
-	}
+	client := resty.New()
+	client.SetTimeout(time.Duration(30 * time.Second))
 
 	// Test with expected slot -> slashing count
 	slashings := map[string]int{
@@ -31,7 +31,7 @@ func TestSlashingExtraction(t *testing.T) {
 	}
 
 	for slot, count := range slashings {
-		block, err := getSlot(&client, cfg, slot)
+		block, err := getSlot(client, cfg, slot)
 		if err != nil {
 			t.Log("Error getting block at slot:", err)
 			t.Fail()

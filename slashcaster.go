@@ -13,13 +13,14 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/go-co-op/gocron"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
 func setupSignalHandler(conf *config.Config) {
 	// Listens for incoming interrupt signals, dumps config if detected
-	channel := make(chan os.Signal)
+	channel := make(chan os.Signal, 2)
 	signal.Notify(channel, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
@@ -54,7 +55,7 @@ func main() {
 
 	// Load (or create) config, set version number
 	session.Config = config.LoadConfig("")
-	session.Config.Version = "1.4.1"
+	session.Config.Version = "1.5.0"
 
 	// Setup anti-spam
 	session.Spam = &spam.AntiSpam{}
@@ -101,11 +102,15 @@ func main() {
 	if !session.Config.NoStream {
 		go api.SlotStreamer(&sendQueue, session.Config)
 	} else {
-		log.Print("⛔️ Slot-streaming explicitly disabled!")
+		log.Warn().Msg("⛔️ Slot-streaming explicitly disabled!")
 	}
 
+	// Regularly dump config to disk
+	scheduler := gocron.NewScheduler(time.UTC)
+	scheduler.Every(30).Minutes().Do(config.DumpConfig, session.Config)
+
 	// Log start
-	log.Printf("🔪 SlashCaster %s started at %s", session.Config.Version, time.Now())
+	log.Debug().Msgf("🔪 SlashCaster %s started at %s", session.Config.Version, time.Now())
 
 	// Start Telegram bot
 	/*

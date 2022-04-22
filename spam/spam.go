@@ -32,7 +32,7 @@ func CommandPreHandler(spam *AntiSpam, chat int64, sentAt int64) bool {
 		spam.ChatLogs[chat] = chatLog
 		spam.Mutex.Unlock()
 
-		log.Printf("Chat %d now has %d spam offenses", chat, chatLog.CommandSpamOffenses)
+		log.Debug().Msgf("Chat %d now has %d spam offenses", chat, chatLog.CommandSpamOffenses)
 		return false
 	}
 

@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog/log"
-	tb "gopkg.in/tucnak/telebot.v3"
+	tb "gopkg.in/telebot.v3"
 )
 
 type Message struct {
@@ -30,7 +30,7 @@ func AddToQueue(queue *SendQueue, message *Message) {
 }
 
 func handleSendError(msg Message, err error) {
-	log.Printf("Error sending message: %s", err.Error())
+	log.Error().Err(err).Msg("Error sending message")
 }
 
 func MessageSender(queue *SendQueue, session *config.Session) {

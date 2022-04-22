@@ -11,7 +11,7 @@ import (
 	"github.com/dustin/go-humanize/english"
 
 	"github.com/rs/zerolog/log"
-	tb "gopkg.in/tucnak/telebot.v3"
+	tb "gopkg.in/telebot.v3"
 )
 
 func slashingString(event SlashingEvent, config *config.Config) string {
@@ -197,7 +197,7 @@ func broadcastSlashing(squeue *queue.SendQueue, config *config.Config, slashingS
 
 		// Add to queue -> send
 		queue.AddToQueue(squeue, &message)
-		log.Print("📢 Broadcast slashing to configured channel!")
+		log.Debug().Msg("📢 Broadcast slashing to configured channel!")
 	}
 
 	// Sleep a while before starting the mass-send so the channel message sends
@@ -218,5 +218,5 @@ func broadcastSlashing(squeue *queue.SendQueue, config *config.Config, slashingS
 	}
 
 	// Log amount of sent broadcasts
-	log.Print("📢 Broadcast slashing to", len(config.Broadcast.TelegramSubscribers), "chats!")
+	log.Debug().Msgf("📢 Broadcast slashing to %d chats", len(config.Broadcast.TelegramSubscribers))
 }

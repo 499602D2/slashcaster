@@ -1,16 +1,16 @@
 package api
 
 import (
-	"bytes"
 	"encoding/json"
-	"io/ioutil"
-	"net/http"
+	"errors"
+	"fmt"
 	"strconv"
 	"time"
 
 	"slashcaster/config"
 	"slashcaster/queue"
 
+	"github.com/go-resty/resty/v2"
 	"github.com/rs/zerolog/log"
 )
 
@@ -22,22 +22,9 @@ func bumpStats(conf *config.Config, currSlot int64, blockTime int64) {
 	conf.Mutex.Unlock()
 }
 
-func prettyPrintJson(body []byte) {
-	// Pretty-print JSON
-	var prettyJSON bytes.Buffer
-	error := json.Indent(&prettyJSON, body, "", "  ")
-
-	if error != nil {
-		log.Error().Err(error).Msg("JSON parse error")
-		return
-	}
-
-	log.Printf("Block data: %s", prettyJSON.String())
-}
-
-func doGetRequest(client *http.Client, url string) (BlockData, error) {
+func doGetRequest(client *resty.Client, url string) (BlockData, error) {
 	// Perform GET-requests
-	resp, err := client.Get(url)
+	resp, err := client.R().Get(url)
 
 	// Block
 	var block BlockData
@@ -47,25 +34,37 @@ func doGetRequest(client *http.Client, url string) (BlockData, error) {
 		return block, err
 	}
 
-	// Read bytes from returned data
-	defer resp.Body.Close()
-	bodyBytes, _ := ioutil.ReadAll(resp.Body)
+	if resp.IsError() {
+		err = errors.New(fmt.Sprintf("Request failed with status-code %d", resp.StatusCode()))
+		log.Error().Err(resp.Request.Context().Err()).Msg(err.Error())
 
-	// Pretty-print for debug
-	// prettyPrintJson(bodyBytes)
+		return block, err
+	}
 
 	// Unmarshal into our block object
-	json.Unmarshal(bodyBytes, &block)
+	err = json.Unmarshal(resp.Body(), &block)
+
+	if err != nil {
+		log.Trace().Err(err).Msg("Error unmarshaling data to block")
+		return block, err
+	}
 
 	return block, err
 }
 
-func getHead(client *http.Client, config *config.Config) (string, error) {
+func getHead(client *resty.Client, config *config.Config) (string, error) {
 	// Endpoint
-	url := config.Tokens.Infura + "/eth/v1/node/syncing"
+	url := fmt.Sprintf("%s/eth/v1/node/syncing", config.Tokens.Infura)
 
 	// Perform GET-requests
-	resp, err := client.Get(url)
+	resp, err := client.R().Get(url)
+
+	if resp.IsError() {
+		err = errors.New(fmt.Sprintf("Request failed with status code = %d", resp.StatusCode()))
+		log.Error().Err(resp.Request.Context().Err()).Msg(err.Error())
+
+		return "", err
+	}
 
 	// Chain head
 	var headData HeadData
@@ -75,45 +74,55 @@ func getHead(client *http.Client, config *config.Config) (string, error) {
 		return "", err
 	}
 
-	// Read bytes from returned data
-	defer resp.Body.Close()
-	bodyBytes, _ := ioutil.ReadAll(resp.Body)
-
 	// Unmarshal into our block object
-	json.Unmarshal(bodyBytes, &headData)
+	err = json.Unmarshal(resp.Body(), &headData)
+
+	if err != nil {
+		log.Trace().Err(err).Msg("Error unmarshaling head data to block")
+		return "", err
+	}
 
 	return headData.HeadData.HeadSlot, nil
 }
 
-func getSlot(client *http.Client, config *config.Config, slot string) (BlockData, error) {
+func getSlot(client *resty.Client, config *config.Config, slot string) (BlockData, error) {
 	// If slot is pre-Altair, use eth/v1 endpoint
 	altairSlot := 74240 * 32
 	currSlot, _ := strconv.Atoi(slot)
 
 	var blockEndpoint string
 	if currSlot >= altairSlot {
-		blockEndpoint = "/eth/v2/beacon/blocks/"
+		blockEndpoint = "eth/v2/beacon/blocks"
 	} else {
-		blockEndpoint = "/eth/v1/beacon/blocks/"
+		blockEndpoint = "eth/v1/beacon/blocks"
 	}
 
 	// Get block at slot
-	return doGetRequest(client, config.Tokens.Infura+blockEndpoint+slot)
+	slotUrl := fmt.Sprintf("%s/%s/%s", config.Tokens.Infura, blockEndpoint, slot)
+	block, err := doGetRequest(client, slotUrl)
+
+	if err != nil {
+		log.Warn().Msgf("Getting slot=%s failed: sleeping for 60 seconds...", slot)
+		time.Sleep(time.Second * 60)
+
+		return getSlot(client, config, slot)
+	}
+
+	return block, err
 }
 
 func SlotStreamer(squeue *queue.SendQueue, conf *config.Config) {
 	// HTTP client
-	client := http.Client{
-		Timeout: 10 * time.Second,
-	}
+	client := resty.New()
+	client.SetTimeout(time.Duration(30 * time.Second))
 
 	// Get chain head
-	headSlot, err := getHead(&client, conf)
+	headSlot, err := getHead(client, conf)
 
 	if err != nil {
 		log.Fatal().Err(err).Msg("Error starting slotStreamer!")
 	} else {
-		log.Printf("[slotStreamer] Got chain head, slot=%s", headSlot)
+		log.Info().Msgf("[slotStreamer] Got chain head, slot=%s", headSlot)
 	}
 
 	// Covert head to an i64 for maths
@@ -125,8 +134,7 @@ func SlotStreamer(squeue *queue.SendQueue, conf *config.Config) {
 
 		if delta > 0 {
 			currSlot = conf.Stats.CurrentSlot + 1
-			log.Printf(
-				"[slotStreamer] %d slot(s) behind: starting sync from slot=%d",
+			log.Debug().Msgf("[slotStreamer] %d slot(s) behind: starting sync from slot=%d",
 				delta, conf.Stats.CurrentSlot)
 		}
 	}
@@ -142,7 +150,7 @@ func SlotStreamer(squeue *queue.SendQueue, conf *config.Config) {
 	// Start streaming from headSlot
 	for {
 		if conf.Debug {
-			log.Printf("Streaming slot %d", currSlot)
+			log.Debug().Msgf("Streaming slot %d", currSlot)
 		}
 
 		// Set blocktime to the last "next" block
@@ -152,7 +160,7 @@ func SlotStreamer(squeue *queue.SendQueue, conf *config.Config) {
 		slot := strconv.FormatInt(int64(currSlot), 10)
 
 		// Get block
-		block, err := getSlot(&client, conf, slot)
+		block, err := getSlot(client, conf, slot)
 
 		if err != nil {
 			log.Error().Err(err).Msgf("Error getting block %s", slot)
@@ -163,7 +171,7 @@ func SlotStreamer(squeue *queue.SendQueue, conf *config.Config) {
 		}
 
 		if conf.Debug {
-			log.Print("↳ Got block")
+			log.Debug().Msg("↳ Got block")
 		}
 
 		// Parse block for slashings
@@ -171,7 +179,7 @@ func SlotStreamer(squeue *queue.SendQueue, conf *config.Config) {
 
 		if len(foundSlashings.Slashings) > 0 {
 			// Log slashing event
-			log.Printf("[slotStreamer] Found %d slashing(s) in slot=%s", len(foundSlashings.Slashings), slot)
+			log.Info().Msgf("[slotStreamer] Found %d slashing(s) in slot=%s", len(foundSlashings.Slashings), slot)
 
 			// Produce a message from found slashings
 			slashStr := slashingString(foundSlashings, conf)
@@ -191,7 +199,7 @@ func SlotStreamer(squeue *queue.SendQueue, conf *config.Config) {
 		nextBlockIn := nextBlockTime - currTime
 
 		if conf.Debug {
-			log.Printf("↳ Next slot in %d seconds", nextBlockIn)
+			log.Debug().Msgf("↳ Next slot in %d seconds", nextBlockIn)
 		}
 
 		// Set stats in goroutine

@@ -15,7 +15,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	dg "github.com/bwmarrin/discordgo"
-	tb "gopkg.in/tucnak/telebot.v3"
+	tb "gopkg.in/telebot.v3"
 )
 
 type Session struct {
@@ -159,7 +159,7 @@ func DumpConfig(config *Config) {
 	jsonbytes, err := json.MarshalIndent(config, "", "\t")
 
 	if err != nil {
-		log.Printf("⚠️ Error marshaling json! Err: %s", err)
+		log.Error().Err(err).Msg("⚠️ Error marshaling json")
 	}
 
 	wd, _ := os.Getwd()
@@ -172,7 +172,11 @@ func DumpConfig(config *Config) {
 	}
 
 	// Write, close
-	file.Write(jsonbytes)
+	_, err = file.Write(jsonbytes)
+	if err != nil {
+		log.Error().Err(err).Msg("Dumping config failed")
+	}
+
 	file.Close()
 }
 
