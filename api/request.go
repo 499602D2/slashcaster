@@ -34,13 +34,6 @@ func doGetRequest(client *resty.Client, url string) (BlockData, error) {
 		return block, err
 	}
 
-	if resp.IsError() {
-		err = errors.New(fmt.Sprintf("Request failed with status-code %d", resp.StatusCode()))
-		log.Error().Err(resp.Request.Context().Err()).Msg(err.Error())
-
-		return block, err
-	}
-
 	// Unmarshal into our block object
 	err = json.Unmarshal(resp.Body(), &block)
 
