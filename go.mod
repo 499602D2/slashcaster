@@ -10,7 +10,7 @@ require (
 
 require (
 	github.com/robfig/cron/v3 v3.0.1 // indirect
-	golang.org/x/net v0.0.0-20220421235706-1d1ef9303861 // indirect
+	golang.org/x/net v0.0.0-20220425223048-2871e0cb64e4 // indirect
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c // indirect
 )
 
