@@ -107,7 +107,6 @@ func getSlot(client *resty.Client, config *config.Config, slot string) (BlockDat
 func SlotStreamer(squeue *queue.SendQueue, conf *config.Config) {
 	// HTTP client
 	client := resty.New()
-	client.SetTimeout(time.Duration(30 * time.Second))
 
 	// Get chain head
 	headSlot, err := getHead(client, conf)
@@ -159,7 +158,7 @@ func SlotStreamer(squeue *queue.SendQueue, conf *config.Config) {
 			log.Error().Err(err).Msgf("Error getting block %s", slot)
 
 			// If we error out due to e.g. network conditions, sleep and retry
-			time.Sleep(time.Second * time.Duration(5))
+			time.Sleep(time.Second * time.Duration(60))
 			continue
 		}
 
