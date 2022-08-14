@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
+	"github.com/hako/durafmt"
 	tb "gopkg.in/telebot.v3"
 )
 
@@ -61,14 +62,16 @@ func SetupTelegramBot(session *config.Session, sendQueue *queue.SendQueue) {
 		ago := time.Now().Unix() - session.Config.Stats.BlockTime
 		slot := humanize.Comma(int64(session.Config.Stats.CurrentSlot))
 		blocksParsed := humanize.Comma(int64(session.Config.Stats.BlocksParsed))
-		startedAgo := humanize.RelTime(
-			time.Now(), time.Unix(session.Config.Stats.StartTime, 0), "ago", "ago")
+
+		startedAgo := durafmt.Parse(
+			time.Since(time.Unix(session.Config.Stats.StartTime, 0)),
+		).LimitFirstN(2).String()
 
 		text := "🔪 *SlashCaster statistics*\n" +
 			fmt.Sprintf("Current slot: %s\n", slot) +
 			fmt.Sprintf("Blocks parsed: %s\n", blocksParsed) +
 			fmt.Sprintf("Last block %d seconds ago\n\n", ago) +
-			fmt.Sprintf("_Bot started %s_", startedAgo)
+			fmt.Sprintf("_Bot started %s ago_", startedAgo)
 
 		msg := queue.Message{
 			Type:      "telegram",
